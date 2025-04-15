@@ -7,20 +7,23 @@ import sys
 game_over = False
 lives = 3
 score = 0
+
 #Dimensions of screen
-HEIGHT = 800
-WIDTH = 800
+HEIGHT = 900
+WIDTH = 900
 
 root = Tk() 
-root.geometry("300x200")
 root.withdraw()
 
 #Define Pac Man
-pac=Actor("pac.png")
-pac.pos = (100,100)
+pac=Actor("pacright.png")
+pac.pos = (100,300)
+
 #Define collectible
 pellet=Actor("pellet.png")
-pellet.pos = (200,200)
+
+#User is introduced to the game
+messagebox.showinfo("Welcome to Pacman", "Collect the pellet and avoid the ghosts!")
 
 #User chooses the number of ghosts following pac
 num = simpledialog.askinteger("Input", "How many ghosts do you want?", minvalue=1, maxvalue=4)
@@ -29,7 +32,7 @@ ghosts = []
 for i in range(num):
     ghost = Actor("ghost.png")
     #Random starting position of ghosts
-    ghost.pos = (randint(600, 800), randint(100, 700))
+    ghost.pos = (randint(600, 900), randint(100, 700))
     ghosts.append(ghost)
 
 def draw():
@@ -39,8 +42,8 @@ def draw():
     pellet.draw()
     for ghost in ghosts:
         ghost.draw()
-    screen.draw.text("Score: " + str(score), center=(50,50), color="white",fontsize=60)
-    screen.draw.text("Lives: " + str(lives), center=(50,100), color="white",fontsize=60)
+    screen.draw.text("Score: " + str(score), center=(100,50), color="white",fontsize=60)
+    screen.draw.text("Lives: " + str(lives), center=(100,100), color="white",fontsize=60)
 
 def place_pellet(p):
     p.x=randint(20, (WIDTH-20))
@@ -89,7 +92,7 @@ def update():
             else:
                 pac.pos = (100, 100)
                 for ghost in ghosts:
-                    ghost.pos = (randint(600, 800), randint(100, 700))
+                    ghost.pos = (randint(600, 900), randint(100, 700))
                 messagebox.showinfo("Warning", f"You have {lives} lives left!")
                 time.sleep(1)
     
