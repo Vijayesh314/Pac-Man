@@ -4,9 +4,7 @@ from tkinter import Tk, messagebox, simpledialog
 import time
 import sys
 
-game_over = False
-lives = 3
-score = 0
+game_state = {"game_over": False, "lives": 3, "score": 0}
 
 #Dimensions of screen
 HEIGHT = 900
@@ -42,15 +40,14 @@ def draw():
     pellet.draw()
     for ghost in ghosts:
         ghost.draw()
-    screen.draw.text("Score: " + str(score), center=(100,50), color="white",fontsize=60)
-    screen.draw.text("Lives: " + str(lives), center=(100,100), color="white",fontsize=60)
+    screen.draw.text("Score: " + str(game_state["score"]), center=(100,50), color="white",fontsize=60)
+    screen.draw.text("Lives: " + str(game_state["lives"]), center=(100,100), color="white",fontsize=60)
 
-def place_pellet(p):
-    p.x=randint(20, (WIDTH-20))
-    p.y=randint(20, (HEIGHT-20))
+def place_pellet():
+    pellet.x=randint(50, (WIDTH-50))
+    pellet.y=randint(50, (HEIGHT-50))
 
-def update():
-    global game_over, lives, score
+def update_game_state(game_state):
     #Left Arrow key pressed makes pac go left
     if keyboard.left or keyboard.a:
         pac.x=pac.x-4
@@ -82,24 +79,30 @@ def update():
         #Conditionals of ghosts moving towards pac
         if pac.colliderect(ghost):
             #If pac collides with ghost, 1 life is lost
-            lives -= 1
+            game_state["lives"] -= 1
             #If pac collides with ghost thrice, the game is over
-            if lives == 0:
-                game_over = True
-                messagebox.showinfo("Game Over", f"Final score: {score}")
+            if game_state["lives"] == 0:
+                game_state["game_over"] = True
+                messagebox.showinfo("Game Over", f"Final score: {game_state['score']}")
                 sys.exit()
             #Game resests if pac collides with ghost
             else:
                 pac.pos = (100, 100)
                 for ghost in ghosts:
                     ghost.pos = (randint(600, 900), randint(100, 700))
-                messagebox.showinfo("Warning", f"You have {lives} lives left!")
+                messagebox.showinfo("Warning", f"You have {game_state['lives']} lives left!")
                 time.sleep(1)
     
     #If pac collides with pellet, score increases by 10 the pellet is placed randomly on screen
     if pac.colliderect(pellet):
-        score += 10
-        place_pellet(pellet)
+        game_state["score"] += 10
+        place_pellet()
+
+    return game_state
+
+def update():
+    global game_state
+    game_state = update_game_state(game_state)
 
 def time_up():
     global game_over
@@ -108,5 +111,5 @@ def time_up():
 #Schedule the time up event after 60 seconds
 clock.schedule(time_up, 60)  
 
-place_pellet(pellet)
+place_pellet()
 pgzrun.go()
