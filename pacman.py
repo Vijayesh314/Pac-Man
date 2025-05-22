@@ -1,8 +1,4 @@
 import pgzrun
-from pgzero.actor import Actor
-from pgzero.keyboard import keyboard
-from pgzero import screen
-from pgzero import clock
 from random import randint
 from tkinter import Tk, messagebox, simpledialog
 import time
@@ -20,7 +16,7 @@ root = Tk()
 root.withdraw()
 
 #Define Pac Man
-pac=Actor("pacright.png")
+pac = Actor("pacright.png")
 pac.pos = (100,300)
 
 #Define collectible
@@ -45,7 +41,7 @@ for i in range(num):
     ghosts.append(ghost)
 
 def draw():
-    screen.fill("black")
+    screen.fill((0,0,0))
     #Pac appears on screen
     pac.draw()
     pellet.draw()
