@@ -6,7 +6,6 @@ os.environ["SDL_VIDEO_FULLSCREEN"] = "1"
 import pgzrun
 from pgzero.actor import Actor
 from pgzero.rect import Rect
-from pgzero.keyboard import keyboard
 from tkinter import messagebox
 from random import randint
 import time
@@ -16,14 +15,14 @@ import sys
 HEIGHT = 1500
 WIDTH = 1500
 
-game_over = False
 vulnerable = False
 lives = 3
 score = 0
+direction = None
 
 #Define Pac Man
 pac = Actor("pac.png")
-pac.pos = (randint(200, 1300), randint(200, 1300))
+pac.pos = (100, 400)
 
 #Define ghosts
 pink = Actor("pinkright.png")
@@ -37,13 +36,6 @@ orange.base_image = "orange"
 ghosts = [pink, blue, red, orange]
 for ghost in ghosts:
     ghost.pos = (randint(600, 900), randint(100, 700))
-
-#Define collectible
-pellets = []
-for i in range(100):
-    pellet = Actor("pellet.png")
-    pellet.pos = (randint(200, 900), randint(200, 900))
-    pellets.append(pellet)
 
 letters = {
     "S": ["01111",
@@ -98,7 +90,7 @@ letters = {
          "11110"]
 }
 
-def add_word(word, x0, y0, walls, block=50, gap=70):
+def addword(word, x0, y0, walls, block=50, gap=70):
     for i, ch in enumerate(word):
         pattern = letters[ch]
         for row, line in enumerate(pattern):
@@ -106,20 +98,51 @@ def add_word(word, x0, y0, walls, block=50, gap=70):
                 if bit == "1":
                     x = x0 + i*(5*block + gap) + col*block
                     y = y0 + row*block
-                    walls.append(Rect((x, y), (block, block)))
+                    walls.append({"rect": Rect((x, y), (block, block)), "base_y": y})
 
 walls = []
 #Top Row SHIP
-add_word("S", x0=150, y0=175, walls=walls)
-add_word("H", x0=450, y0=50, walls=walls)
-add_word("I", x0=800, y0=150, walls=walls)
-add_word("P", x0=1100, y0=75, walls=walls)
+addword("S", x0=150, y0=175, walls=walls)
+addword("H", x0=450, y0=50, walls=walls)
+addword("I", x0=800, y0=150, walls=walls)
+addword("P", x0=1100, y0=75, walls=walls)
 #Bottom Row WRECK
-add_word("W", x0=50, y0=600, walls=walls)
-add_word("R", x0=350, y0=550, walls=walls)
-add_word("E", x0=650, y0=650, walls=walls)
-add_word("C", x0=950, y0=575, walls=walls)
-add_word("K", x0=1250, y0=630, walls=walls)
+addword("W", x0=50, y0=600, walls=walls)
+addword("R", x0=350, y0=550, walls=walls)
+addword("E", x0=650, y0=650, walls=walls)
+addword("C", x0=950, y0=575, walls=walls)
+addword("K", x0=1250, y0=630, walls=walls)
+
+#Define collectible
+pellets = []
+for i in range(100):
+    pellet = Actor("pellet.png")
+    pellets.append(pellet)
+
+for pellet in pellets:
+    collision_detected = True
+    while collision_detected:
+        pellet.pos = (randint(200, 900), randint(200, 900))
+        collision_detected = False
+        for wall in walls:
+            if pellet.colliderect(wall["rect"]):
+                collision_detected = True
+                break
+
+def on_key_down(key):
+    global direction
+    if key == keys.LEFT or key == keys.A:
+        direction = "left"
+        pac.angle = 180
+    elif key == keys.RIGHT or key == keys.D:
+        direction = "right"
+        pac.angle = 0
+    elif key == keys.UP or key == keys.W:
+        direction = "up"
+        pac.angle = 90
+    elif key == keys.DOWN or key == keys.S:
+        direction = "down"
+        pac.angle = 270
 
 def draw():
     screen.fill((0, 0, 0))
@@ -130,30 +153,22 @@ def draw():
     for ghost in ghosts:
         ghost.draw()
     for wall in walls:
-        screen.draw.filled_rect(wall, (0, 0, 255))
+        screen.draw.filled_rect(wall["rect"], (0, 0, 255))
     screen.draw.text("Score: " + str(score), center=(100,50), color="white",fontsize=60)
     screen.draw.text("Lives: " + str(lives), center=(100,100), color="white",fontsize=60)
 
 def update():
-    global game_over, lives, score, vulnerable
+    global lives, score, vulnerable, direction
     oldx, oldy = pac.x, pac.y
     
-    #Left Arrow key pressed makes pac go left, change image to left-facing
-    if keyboard.left or keyboard.a:
-        pac.angle = 180
-        pac.x=pac.x-4
-    #Right Arrow key pressed makes pac go right
-    elif keyboard.right or keyboard.d:
-        pac.angle = 0
-        pac.x=pac.x+4
-    #Up Arrow key pressed makes pac go up, change image to up-facing
-    elif keyboard.up or keyboard.w:
-        pac.angle = 90
-        pac.y=pac.y-4
-    #Down Arrow key pressed makes pac go down, change image to down-facing
-    elif keyboard.down or keyboard.s:
-        pac.angle = 270
-        pac.y=pac.y+4
+    if direction == "left":
+        pac.x -= 4
+    elif direction == "right":
+        pac.x += 4
+    elif direction == "up":
+        pac.y -= 4
+    elif direction == "down":
+        pac.y += 4
 
     for ghost in ghosts:
         #Move ghost right if it's left of pac
@@ -191,13 +206,12 @@ def update():
         if pac.colliderect(ghost):
             if vulnerable:
                 score += 200
-                randomize(ghost)            
+                #randomize(ghost)            
             else:
                 #If pac collides with ghost, 1 life is lost
                 lives -= 1
                 #If pac collides with ghost thrice, the game is over
                 if lives == 0:
-                    game_over = True
                     messagebox.showinfo("Game Over", f"Final score: {score}")
                     sys.exit()
                 #Game resests if pac collides with ghost
@@ -206,23 +220,24 @@ def update():
                     for ghost in ghosts:
                         ghost.pos = (randint(600, 900), randint(100, 700))
                     messagebox.showinfo("Warning", f"You have {lives} lives left!")
+                    direction = None
                     time.sleep(1)
 
     for wall in walls:
-        if pac.colliderect(wall):
+        if pac.colliderect(wall["rect"]):
             pac.x, pac.y = oldx, oldy
             break
     
+    if (pac.x == 1492 or pac.x == 8) or (pac.y == 1492 or pac.y == 8):
+        pac.x, pac.y = oldx, oldy
+
     #If pac collides with pellet, score increases by 10 the pellet is placed randomly on screen
     for pellet in pellets:
         if pac.colliderect(pellet):
             score += 10
             pellets.remove(pellet)
+            if not pellets:
+                messagebox.showinfo("Game Over", "Congratulations. You have beat the game.")
+                sys.exit()
         
-def time_up():
-    global game_over
-    game_over = True
-
-#Schedule the time up event after 60 seconds
-clock.schedule_unique(time_up, 60)  
 pgzrun.go()
