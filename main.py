@@ -6,16 +6,17 @@ os.environ["SDL_VIDEO_FULLSCREEN"] = "1"
 import pgzrun
 from pgzero.actor import Actor
 from pgzero.rect import Rect
+from pgzero.clock import schedule_unique
 from tkinter import messagebox
 from random import randint
-import time
 import sys
 
 #Dimensions of screen
 HEIGHT = 1500
 WIDTH = 1500
+tilesize = 50
 
-vulnerable = False
+cooldown = False
 lives = 3
 score = 0
 direction = None
@@ -34,8 +35,12 @@ red.base_image = "red"
 orange = Actor("orangeright.png")
 orange.base_image = "orange"
 ghosts = [pink, blue, red, orange]
+ghostscore = {"red" : 200, "pink": 400, "blue": 800, "orange": 1600}
 for ghost in ghosts:
-    ghost.pos = (randint(600, 900), randint(100, 700))
+    ghost.frightened = False
+    ghost.eaten = False
+    ghost.home_pos = (randint(600, 900), randint(100, 700))
+    ghost.pos = ghost.home_pos
 
 letters = {
     "S": ["01111",
@@ -82,52 +87,152 @@ letters = {
          "10010",
          "11100",
          "10010",
-         "10001"],
-    "D":["11110",
-         "10001",
-         "10001",
-         "10001",
-         "11110"]
+         "10001"]
 }
 
-def addword(word, x0, y0, walls, block=50, gap=70):
-    for i, ch in enumerate(word):
+wall_tiles = set()
+walls = []
+def addletter(letter, x0, y0, walls, block=tilesize, gap=70):
+    for i, ch in enumerate(letter):
         pattern = letters[ch]
         for row, line in enumerate(pattern):
             for col, bit in enumerate(line):
                 if bit == "1":
-                    x = x0 + i*(5*block + gap) + col*block
-                    y = y0 + row*block
-                    walls.append({"rect": Rect((x, y), (block, block)), "base_y": y})
+                    x = x0 + i * (5*block + gap) + col * block
+                    y = y0 + row * block
+                    rect = Rect((x, y), (block, block))
+                    walls.append({"rect": rect})
+                    tilex = x // tilesize
+                    tiley = y // tilesize
+                    wall_tiles.add((tilex, tiley))
 
-walls = []
 #Top Row SHIP
-addword("S", x0=150, y0=175, walls=walls)
-addword("H", x0=450, y0=50, walls=walls)
-addword("I", x0=800, y0=150, walls=walls)
-addword("P", x0=1100, y0=75, walls=walls)
+addletter("S", x0=150, y0=175, walls=walls)
+addletter("H", x0=450, y0=50, walls=walls)
+addletter("I", x0=800, y0=150, walls=walls)
+addletter("P", x0=1100, y0=75, walls=walls)
 #Bottom Row WRECK
-addword("W", x0=50, y0=600, walls=walls)
-addword("R", x0=350, y0=550, walls=walls)
-addword("E", x0=650, y0=650, walls=walls)
-addword("C", x0=950, y0=575, walls=walls)
-addword("K", x0=1250, y0=630, walls=walls)
+addletter("W", x0=50, y0=600, walls=walls)
+addletter("R", x0=350, y0=550, walls=walls)
+addletter("E", x0=650, y0=650, walls=walls)
+addletter("C", x0=950, y0=575, walls=walls)
+addletter("K", x0=1250, y0=630, walls=walls)
 
-#Define collectible
+#Define pellets
 pellets = []
-for i in range(100):
-    pellet = Actor("pellet.png")
-    pellets.append(pellet)
+tiles_x = WIDTH // tilesize
+tiles_y = HEIGHT // tilesize
+for tx in range(tiles_x):
+    for ty in range(tiles_y):
+        if (tx, ty) not in wall_tiles:
+            pellet = Actor("pellet.png")
+            pellet.pos = (tx * tilesize + tilesize // 2, ty * tilesize + tilesize //2)
+            pellets.append(pellet)
 
-for pellet in pellets:
-    collision_detected = True
-    while collision_detected:
-        pellet.pos = (randint(200, 900), randint(200, 900))
-        collision_detected = False
-        for wall in walls:
-            if pellet.colliderect(wall["rect"]):
-                collision_detected = True
-                break
+powerpellets = []
+powertiles = [(208, 494), (1160, 486), (774, 77), (1416, 372), (30, 540), (860, 42)]
+for x, y in powertiles:
+    pellet = Actor("power.png")
+    pellet.pos = (x, y)
+    powerpellets.append(pellet)
+
+def reset():
+    global direction
+    pac.pos = (100, 400)
+    messagebox.showinfo("Warning", f"You have {lives} lives left!")
+    direction = None
+    for ghost in ghosts:
+        if not ghost.eaten:
+            ghost.pos = ghost.home_pos
+
+def end_game():
+    messagebox.showinfo("Game Over", f"Final score: {score}")
+    sys.exit()
+
+def cooldownreset():
+    global cooldown
+    cooldown = False
+
+def triggervulnerable():
+    for ghost in ghosts:
+        if not ghost.eaten:
+            ghost.frightened = True
+            ghost.image = "vulnerable.png"
+    schedule_unique(endvulnerable, 10.0)
+
+def endvulnerable():
+    for ghost in ghosts:
+        if not ghost.eaten:
+            ghost.frightened = False
+            ghost.image = ghost.base_image + "right.png"
+
+def update_ghosts():
+    for ghost in ghosts:
+        if ghost.eaten:
+            if ghost.x < ghost.home_pos[0]:
+                try_move(ghost, 1, 0)
+            elif ghost.x > ghost.home_pos[0]:
+                try_move(ghost, -1, 0)
+            if ghost.y < ghost.home_pos[1]:
+                try_move(ghost, 0, 1)
+            elif ghost.y > ghost.home_pos[1]:
+                try_move(ghost, 0, -1)
+            if (int(ghost.x), int(ghost.y)) == ghost.home_pos:
+                ghost.eaten = False
+                ghost.image = ghost.base_image + "right.png"
+            
+def moveghost(ghost):
+    if ghost.eaten:
+        return
+    ogx, ogy = ghost.x, ghost.y
+    
+    if ghost.frightened:
+        if ghost.x < pac.x:
+            try_move(ghost, -1, 0)
+        elif ghost.x > pac.x:
+            try_move(ghost, 1, 0)
+    else:
+        if ghost.x < pac.x:
+            try_move(ghost, 1, 0)
+        elif ghost.x > pac.x:
+            try_move(ghost, -1, 0)
+    
+    if ghost.frightened:
+        if ghost.y < pac.y:
+            try_move(ghost, 0, -1)
+        elif ghost.y > pac.y:
+            try_move(ghost, 0, 1)
+    else:
+        if ghost.y < pac.y:
+            try_move(ghost, 0, 1)
+        elif ghost.y > pac.y:
+            try_move(ghost, 0, -1)
+
+    for other in ghosts:
+        if other is ghost:
+            continue
+        if abs(ghost.x - other.x) < tilesize and abs(ghost.y - other.y) < tilesize:
+            if ghost.x < other.x:
+                try_move(ghost, -1, 0)
+            else:
+                try_move(ghost, 1, 0)
+            if ghost.y < other.y:
+                try_move(ghost, 0, -1)
+            else:
+                try_move(ghost, 0, 1)
+            break
+    dx, dy = ghost.x - ogx, ghost.y - ogy
+    if ghost.frightened:
+        ghost.image = "vulnerable.png"
+    else:
+        if dx > 0:
+            ghost.image = ghost.base_image + "right.png"
+        elif dx < 0:
+            ghost.image = ghost.base_image + "left.png"
+        elif dy > 0:
+            ghost.image = ghost.base_image + "down.png"
+        elif dy < 0:
+            ghost.image = ghost.base_image + "up.png"
 
 def on_key_down(key):
     global direction
@@ -144,12 +249,27 @@ def on_key_down(key):
         direction = "down"
         pac.angle = 270
 
+def try_move(ghost, dx, dy):
+    oldx = ghost.x
+    oldy = ghost.y
+    ghost.x += dx
+    ghost.y += dy
+    tx = int(ghost.x) // tilesize
+    ty = int(ghost.y) // tilesize
+    if (tx, ty) in wall_tiles:
+        ghost.x = oldx
+        ghost.y = oldy
+        return False
+    return True
+
 def draw():
     screen.fill((0, 0, 0))
     #Pac appears on screen
     pac.draw()
     for pellet in pellets:
         pellet.draw()
+    for power in powerpellets:
+        power.draw()
     for ghost in ghosts:
         ghost.draw()
     for wall in walls:
@@ -158,86 +278,66 @@ def draw():
     screen.draw.text("Lives: " + str(lives), center=(100,100), color="white",fontsize=60)
 
 def update():
-    global lives, score, vulnerable, direction
-    oldx, oldy = pac.x, pac.y
-    
+    global lives, score, cooldown
+    update_ghosts()
+
+    oldpx = pac.x
+    oldpy = pac.y
+    speed = 3
+    dx = dy = 0
     if direction == "left":
-        pac.x -= 4
+        dx = -speed
     elif direction == "right":
-        pac.x += 4
+        dx = speed
     elif direction == "up":
-        pac.y -= 4
+        dy = -speed
     elif direction == "down":
-        pac.y += 4
-
+        dy = speed
+    
+    next_tx = int(pac.x + dx) // tilesize
+    next_ty = int(pac.y + dy) // tilesize
+    if (next_tx, next_ty) not in wall_tiles:
+        pac.x += dx
+        pac.y += dy
+    
     for ghost in ghosts:
-        #Move ghost right if it's left of pac
-        if ghost.x < pac.x:
-            ghost.x += 1
-        #Move ghost left if it's right of pac, change image to left-facing
-        elif ghost.x > pac.x:
-            ghost.x -= 1
-            ghost.image = ghost.base_image + "left.png"
-        #Move ghost down if its above pac, change image to down-facing
-        if ghost.y < pac.y:
-            ghost.y += 1
-            ghost.image = ghost.base_image + "down.png"
-        #Move ghost up if its below pac, change image to up-facing
-        elif ghost.y > pac.y:
-            ghost.y -= 1
-            ghost.image = ghost.base_image + "up.png"
-
-        for other in ghosts:
-            if ghost != other:
-                distance = ghost.distance_to(other)
-                if distance < 128:
-                    # Move slightly away to maintain distance
-                    if ghost.x < other.x:
-                        ghost.x -= 1
-                    else:
-                        ghost.x += 1
-                    if ghost.y < other.y:
-                        ghost.y -= 1
-                    else:
-                        ghost.y += 1
-
+        moveghost(ghost)
     for ghost in ghosts:
-        #Conditionals of ghosts moving towards pac
-        if pac.colliderect(ghost):
-            if vulnerable:
-                score += 200
-                #randomize(ghost)            
-            else:
-                #If pac collides with ghost, 1 life is lost
+        if pac.colliderect(ghost) and not cooldown:
+            cooldown = True
+            schedule_unique(cooldownreset, 1.0)
+            if ghost.frightened and not ghost.eaten:
+                score += ghostscore[ghost.base_image]
+                ghost.eaten = True
+                ghost.frightened = False
+                #ghost.pos = ghost.home_pos
+            elif not ghost.eaten:
                 lives -= 1
-                #If pac collides with ghost thrice, the game is over
-                if lives == 0:
-                    messagebox.showinfo("Game Over", f"Final score: {score}")
-                    sys.exit()
-                #Game resests if pac collides with ghost
+                if lives <= 0:
+                    schedule_unique(end_game, 0.1)
                 else:
-                    pac.pos = (100, 100)
-                    for ghost in ghosts:
-                        ghost.pos = (randint(600, 900), randint(100, 700))
-                    messagebox.showinfo("Warning", f"You have {lives} lives left!")
-                    direction = None
-                    time.sleep(1)
-
+                    schedule_unique(reset, 0.1)
     for wall in walls:
         if pac.colliderect(wall["rect"]):
-            pac.x, pac.y = oldx, oldy
+            pac.x = oldpx
+            pac.y = oldpy
             break
     
-    if (pac.x == 1492 or pac.x == 8) or (pac.y == 1492 or pac.y == 8):
-        pac.x, pac.y = oldx, oldy
+    if not (0 <= pac.x <= WIDTH and 0 <= pac.y <= HEIGHT):
+        pac.x = oldpx
+        pac.y = oldpy
 
-    #If pac collides with pellet, score increases by 10 the pellet is placed randomly on screen
-    for pellet in pellets:
+    for pellet in list(pellets):
         if pac.colliderect(pellet):
             score += 10
             pellets.remove(pellet)
-            if not pellets:
-                messagebox.showinfo("Game Over", "Congratulations. You have beat the game.")
-                sys.exit()
-        
+            break
+    
+    for power in list(powerpellets):
+        if pac.colliderect(power):
+            score += 50
+            powerpellets.remove(power)
+            triggervulnerable()
+            break
+
 pgzrun.go()
